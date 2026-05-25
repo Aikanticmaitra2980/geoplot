@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AetherCast ML - Spatial Weather GPR</title>
+    
+    <!-- Premium Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet.js (100% Free, Zero-Registration, No API Token Required!) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Elegant FontAwesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.4);
+            --bg-glass: rgba(15, 23, 42, 0.75);
+            --border-glass: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent-warm: #f43f5e;
+            --accent-cool: #3b82f6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body, html {
+            height: 100%;
+            overflow: hidden;
+            background-color: #020617;
+            color: var(--text-main);
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            z-index: 1;
+            background-color: #0c0f1d !important;
+        }
+
+        /* Glassmorphic Floating Panel */
+        .glass-panel {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            width: 380px;
+            max-height: calc(100% - 48px);
+            z-index: 1000;
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            border: 1px solid var(--border-glass);
+            border-radius: 20px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        }
+
+        .glass-panel::-webkit-scrollbar {
+            width: 6px;
+        }
+        .glass-panel::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header i {
+            font-size: 28px;
+            color: var(--primary);
+            filter: drop-shadow(0 0 8px var(--primary-glow));
+        }
+
+        .header h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 22px;
+            letter-spacing: -0.5px;
+        }
+
+        .subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .location-status {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 8px 12px;
+            border-radius: 8px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .divider {
+            height: 1px;
+            background: var(--border-glass);
+        }
+
+        .section-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 14px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--primary);
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Control Toggle Buttons */
+        .toggle-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px;
+            border-radius: 12px;
+            border: 1px solid var(--border-glass);
+        }
+
+        .toggle-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .toggle-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 12px var(--primary-glow);
+        }
+
+        /* Station List */
+        .station-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .station-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .station-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .station-name {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .station-temp {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent-warm);
+            background: rgba(244, 63, 94, 0.1);
+            padding: 2px 8px;
+            border-radius: 6px;
+        }
+
+        /* Primary Action Button */
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 14px;
+            box-shadow: 0 4px 14px var(--primary-glow);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        /* Legend Panel */
+        .legend-panel {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-glass);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 240px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .legend-title {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .legend-bar {
+            height: 10px;
+            border-radius: 5px;
+            background: linear-gradient(to right, #3b82f6, #60a5fa, #fbbf24, #f97316, #ef4444);
+            margin: 4px 0;
+        }
+
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* Spinner for loading state */
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Custom Leaflet Tooltip & Popup Style Overrides */
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip {
+            background: rgba(15, 23, 42, 0.95) !important;
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1) !important;
+            color: white !important;
+            border-radius: 12px !important;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
+        }
+
+        .leaflet-container a.leaflet-popup-close-button {
+            color: var(--text-muted) !important;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Map Container -->
+    <div id="map"></div>
+
+    <!-- Left Control Panel -->
+    <div class="glass-panel">
+        <div class="header">
+            <i class="fa-solid fa-wind"></i>
+            <div>
+                <h1>AetherCast ML</h1>
+                <p style="font-size: 11px; color: var(--primary); font-weight: 600;">GPR Spatial Weather Engine</p>
+            </div>
+        </div>
+        
+        <p class="subtitle">
+            This system runs dynamic <b>Gaussian Process Regression (Kriging)</b> on our Python FastAPI backend to interpolate continuous temperature fields and prediction uncertainties based on real station coordinates.
+        </p>
+
+        <!-- Dynamic GPS Location Status Widget -->
+        <div id="locationWidget" class="location-status">
+            <i class="fa-solid fa-circle-notch fa-spin"></i> Detecting your current location...
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Elegant Geocoder Search Bar -->
+        <div>
+            <span class="section-title">Search Location</span>
+            <div style="position: relative; display: flex; gap: 8px;">
+                <div style="position: relative; flex-grow: 1;">
+                    <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px;"></i>
+                    <input type="text" id="citySearchInput" placeholder="Enter City (e.g. Paris, Tokyo, Mumbai)" style="width: 100%; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-glass); border-radius: 10px; padding: 10px 12px 10px 36px; color: white; font-size: 13px; outline: none; transition: all 0.3s ease;" onkeydown="if(event.key === 'Enter') searchCity(this.value)">
+                </div>
+                <button onclick="searchCity(document.getElementById('citySearchInput').value)" style="background: var(--primary); color: white; border: none; padding: 10px 14px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; transition: all 0.3s ease;"><i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Visualizers Toggle -->
+        <div>
+            <span class="section-title">Visualizations</span>
+            <div class="toggle-container" style="grid-template-columns: 1fr 1fr; gap: 4px;">
+                <button id="viewTemp" class="toggle-btn active" onclick="switchLayer('temp')">
+                    <i class="fa-solid fa-temperature-three-quarters"></i> Temp
+                </button>
+                <button id="viewRain" class="toggle-btn" onclick="switchLayer('rain')">
+                    <i class="fa-solid fa-cloud-showers-water"></i> Rain
+                </button>
+                <button id="viewClouds" class="toggle-btn" onclick="switchLayer('clouds')">
+                    <i class="fa-solid fa-cloud"></i> Clouds
+                </button>
+                <button id="viewUnc" class="toggle-btn" onclick="switchLayer('unc')">
+                    <i class="fa-solid fa-circle-nodes"></i> Uncertainty
+                </button>
+            </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Stations List -->
+        <div>
+            <span class="section-title">
+                Active Stations 
+                <span style="font-size: 11px; color: var(--text-muted); text-transform: none; font-weight: normal;">(Training Data)</span>
+            </span>
+            <div id="stationList" class="station-list">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
+        <!-- Interpolate Viewport Button -->
+        <button id="interpolateBtn" class="btn-primary" onclick="triggerInterpolation()">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span id="btnText">Interpolate Viewport</span>
+            <div id="btnSpinner" class="spinner"></div>
+        </button>
+    </div>
+
+    <!-- Dynamic Map Legend -->
+    <div class="legend-panel">
+        <span id="legendTitle" class="legend-title">Temperature Legend</span>
+        <div id="legendBar" class="legend-bar"></div>
+        <div class="legend-labels">
+            <span id="legendMin">12°C</span>
+            <span id="legendMid">18°C</span>
+            <span id="legendMax">25°C</span>
+        </div>
+    </div>
+
+    <script>
+        let map;
+        let activeLayer = 'temp'; // 'temp', 'rain', 'clouds', or 'unc'
+        let currentWeatherMetric = 'temp'; // The underlying weather variable being analyzed ('temp', 'rain', or 'clouds')
+        let stationsLayer;
+        let interpolationLayer;
+        let currentGridData = null; // Store fetched GPR output
+        let cachedStationsData = null; // Store active stations list
+
+        // Dynamic weather bounds scaling dynamically based on localized station data
+        let minTemp = 10.0, maxTemp = 25.0;
+        let minRain = 0.0, maxRain = 5.0;
+        let minClouds = 0.0, maxClouds = 100.0;
+
+        // Dynamically detect API base URL (allows double-clicking index.html as a file or serving via FastAPI)
+        const isLocalFile = window.location.protocol === 'file:';
+        const apiBase = isLocalFile ? 'http://127.0.0.1:8000' : '';
+
+        document.addEventListener("DOMContentLoaded", () => {
+            initMap();
+        });
+
+        function initMap() {
+            // First initialize map container centered at [0, 0] silently while detecting location
+            map = L.map('map', {
+                zoomControl: false
+            }).setView([0, 0], 2);
+
+            // Add CartoDB Dark Matter tile layer
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                maxZoom: 20
+            }).addTo(map);
+
+            L.control.zoom({ position: 'bottomleft' }).addTo(map);
+
+            const widget = document.getElementById("locationWidget");
+
+            // Define location processor
+            const handleLocationFound = (lat, lon, label) => {
+                widget.innerHTML = `<i class="fa-solid fa-location-dot" style="color: #4ade80;"></i> ${label}`;
+                widget.style.background = "rgba(74, 222, 128, 0.1)";
+                widget.style.borderColor = "rgba(74, 222, 128, 0.2)";
+                widget.style.color = "#86efac";
+                
+                map.setView([lat, lon], 9.3);
+                initializeRealtimeWeather(lat, lon);
+            };
+
+            // Attempt Geolocation in browser!
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        handleLocationFound(
+                            position.coords.latitude, 
+                            position.coords.longitude, 
+                            "Localized via high-accuracy GPS!"
+                        );
+                    },
+                    async (error) => {
+                        console.warn("GPS access denied or timed out. Falling back to IP Geolocation.");
+                        widget.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> GPS blocked. Geolocating via IP...`;
+                        
+                        try {
+                            const ipRes = await fetch('https://ipapi.co/json/');
+                            if (!ipRes.ok) throw new Error("IP Lookup failed");
+                            const ipData = await ipRes.json();
+                            
+                            if (ipData.latitude && ipData.longitude) {
+                                handleLocationFound(
+                                    ipData.latitude, 
+                                    ipData.longitude, 
+                                    `Localized to ${ipData.city || 'your area'} (via IP)!`
+                                );
+                            } else {
+                                throw new Error("Invalid IP coordinates");
+                            }
+                        } catch (e) {
+                            console.error(e);
+                            widget.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color: #f43f5e;"></i> Location lookup failed. Please enable location.`;
+                            widget.style.background = "rgba(244, 63, 94, 0.1)";
+                            widget.style.borderColor = "rgba(244, 63, 94, 0.2)";
+                            widget.style.color = "#fca5a5";
+                        }
+                    },
+                    { timeout: 5000, enableHighAccuracy: false }
+                );
+            } else {
+                widget.innerHTML = `<i class="fa-solid fa-circle-info"></i> GPS unsupported by browser.`;
+            }
+
+            // Fetch GPR interpolation when map pan/zoom ends
+            map.on('moveend', () => {
+                triggerInterpolation();
+            });
+        }
+
+        // Asynchronous Geocoder search using OpenStreetMap Nominatim
+        async function searchCity(query) {
+            if (!query || !query.trim()) return;
+            const widget = document.getElementById("locationWidget");
+            
+            widget.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Searching '${query}'...`;
+            widget.style.background = "rgba(99, 102, 241, 0.1)";
+            widget.style.borderColor = "rgba(99, 102, 241, 0.2)";
+            widget.style.color = "#a5b4fc";
+            
+            try {
+                const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+                const headers = { "User-Agent": "AetherCastWeatherApp/1.0 (contact@aethercast.com)" };
+                
+                const response = await fetch(url, { headers: headers });
+                if (!response.ok) throw new Error("Search request failed");
+                
+                const results = await response.json();
+                if (results.length > 0) {
+                    const lat = parseFloat(results[0].lat);
+                    const lon = parseFloat(results[0].lon);
+                    const displayName = results[0].display_name.split(',')[0];
+                    
+                    widget.innerHTML = `<i class="fa-solid fa-location-dot" style="color: #4ade80;"></i> Localized to ${displayName}!`;
+                    widget.style.background = "rgba(74, 222, 128, 0.1)";
+                    widget.style.borderColor = "rgba(74, 222, 128, 0.2)";
+                    widget.style.color = "#86efac";
+                    
+                    map.setView([lat, lon], 9.3);
+                    initializeRealtimeWeather(lat, lon);
+                } else {
+                    widget.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color: #fbbf24;"></i> City not found!`;
+                    widget.style.background = "rgba(251, 191, 36, 0.1)";
+                    widget.style.borderColor = "rgba(251, 191, 36, 0.2)";
+                    widget.style.color = "#fde047";
+                }
+            } catch (err) {
+                console.error(err);
+                widget.innerHTML = `<i class="fa-solid fa-circle-xmark" style="color: #f43f5e;"></i> Search error.`;
+                widget.style.background = "rgba(244, 63, 94, 0.1)";
+                widget.style.borderColor = "rgba(244, 63, 94, 0.2)";
+                widget.style.color = "#fca5a5";
+            }
+        }
+
+        // Initialize Open-Meteo weather station generator on the backend
+        async function initializeRealtimeWeather(lat, lon) {
+            try {
+                const response = await fetch(`${apiBase}/api/initialize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lat: lat, lon: lon })
+                });
+                
+                if (!response.ok) throw new Error("Initialization failed");
+                const data = await response.json();
+                cachedStationsData = data;
+                
+                // Extract dynamic min/max weather bounds based on actual localized station data
+                const temps = data.features.map(f => f.properties.temperature);
+                minTemp = Math.min(...temps) - 1.0;
+                maxTemp = Math.max(...temps) + 1.0;
+
+                const rainValues = data.features.map(f => f.properties.rain);
+                minRain = 0.0;
+                maxRain = Math.max(...rainValues, 1.0); // Minimum 1mm scale
+
+                const cloudValues = data.features.map(f => f.properties.clouds);
+                minClouds = Math.min(...cloudValues);
+                maxClouds = Math.max(...cloudValues);
+                
+                // Update Legend labels dynamically based on active weather variable bounds
+                updateLegendLabels();
+                
+                // Render the new stations on map & lists
+                renderStations(data);
+                
+            } catch (err) {
+                console.error("Error initializing weather from backend:", err);
+            }
+        }
+
+        function updateLegendLabels() {
+            const minLabel = document.getElementById("legendMin");
+            const midLabel = document.getElementById("legendMid");
+            const maxLabel = document.getElementById("legendMax");
+
+            if (activeLayer === 'temp') {
+                minLabel.innerText = `${minTemp.toFixed(1)}°C`;
+                midLabel.innerText = `${((minTemp + maxTemp) / 2).toFixed(1)}°C`;
+                maxLabel.innerText = `${maxTemp.toFixed(1)}°C`;
+            } else if (activeLayer === 'rain') {
+                minLabel.innerText = `${minRain.toFixed(1)} mm`;
+                midLabel.innerText = `${((minRain + maxRain) / 2).toFixed(1)} mm`;
+                maxLabel.innerText = `${maxRain.toFixed(1)} mm`;
+            } else if (activeLayer === 'clouds') {
+                minLabel.innerText = `0 %`;
+                midLabel.innerText = `50 %`;
+                maxLabel.innerText = `100 %`;
+            } else if (activeLayer === 'unc') {
+                minLabel.innerText = "Low (0.0)";
+                midLabel.innerText = "Mid (0.6)";
+                maxLabel.innerText = "High (1.2)";
+            }
+        }
+
+        // Add station list in sidebar & markers onto map
+        function renderStations(data) {
+            const container = document.getElementById("stationList");
+            container.innerHTML = "";
+            
+            // Populate the active stations list in the glassmorphic sidebar panel
+            data.features.forEach(f => {
+                const item = document.createElement("div");
+                item.className = "station-item";
+                
+                let weatherValueStr = "";
+                if (currentWeatherMetric === 'temp') {
+                    weatherValueStr = `${f.properties.temperature.toFixed(1)}°C`;
+                } else if (currentWeatherMetric === 'rain') {
+                    weatherValueStr = `💧 ${f.properties.rain.toFixed(1)} mm`;
+                } else if (currentWeatherMetric === 'clouds') {
+                    weatherValueStr = `☁️ ${f.properties.clouds.toFixed(0)}%`;
+                }
+                
+                item.innerHTML = `
+                    <span class="station-name"><i class="fa-solid fa-tower-broadcast" style="color: #6366f1; margin-right: 6px;"></i> ${f.properties.name}</span>
+                    <span class="station-temp">${weatherValueStr}</span>
+                `;
+                container.appendChild(item);
+            });
+
+            if (stationsLayer) map.removeLayer(stationsLayer);
+            
+            // Add station markers onto Leaflet Map
+            stationsLayer = L.geoJSON(data, {
+                pointToLayer: function (feature, latlng) {
+                    const ring = L.circleMarker(latlng, {
+                        radius: 12,
+                        fillColor: '#f43f5e',
+                        fillOpacity: 0.15,
+                        color: '#f43f5e',
+                        weight: 1.5,
+                        pane: 'markerPane'
+                    });
+                    
+                    const point = L.circleMarker(latlng, {
+                        radius: 5,
+                        fillColor: '#ffffff',
+                        fillOpacity: 1,
+                        color: '#f43f5e',
+                        weight: 2,
+                        pane: 'markerPane'
+                    });
+
+                    const group = L.featureGroup([ring, point]);
+
+                    // Dynamic premium multi-variable popup card
+                    group.bindPopup(`
+                        <div style="font-family: 'Outfit', sans-serif; padding: 4px; line-height: 1.4;">
+                            <strong style="color: #6366f1; font-size: 14px;">${feature.properties.name}</strong><br/>
+                            <div style="margin-top: 6px; display: flex; flex-direction: column; gap: 2px;">
+                                <span>🌡️ Temp: <b>${feature.properties.temperature.toFixed(1)}°C</b></span>
+                                <span>💧 Rain: <b>${feature.properties.rain.toFixed(1)} mm</b></span>
+                                <span>☁️ Clouds: <b>${feature.properties.clouds.toFixed(0)}%</b></span>
+                            </div>
+                        </div>
+                    `);
+                    
+                    return group;
+                }
+            }).addTo(map);
+
+            triggerInterpolation();
+        }
+
+        // Fetch GPR spatial grid from backend
+        async function triggerInterpolation() {
+            if (!map) return;
+            
+            const btnText = document.getElementById("btnText");
+            const spinner = document.getElementById("btnSpinner");
+            
+            btnText.style.display = "none";
+            spinner.style.display = "block";
+
+            const bounds = map.getBounds();
+            const payload = {
+                min_lat: bounds.getSouth(),
+                min_lon: bounds.getWest(),
+                max_lat: bounds.getNorth(),
+                max_lon: bounds.getEast(),
+                // If uncertainty is selected, we interpolate uncertainty of the underlying metric
+                variable: activeLayer === 'unc' ? currentWeatherMetric : activeLayer,
+                grid_size: 35
+            };
+
+            try {
+                const response = await fetch(`${apiBase}/api/interpolate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error("GPR calculation failed");
+                currentGridData = await response.json();
+
+                renderInterpolationLayer();
+
+            } catch (err) {
+                console.error("GPR request error", err);
+            } finally {
+                btnText.style.display = "block";
+                spinner.style.display = "none";
+            }
+        }
+
+        function renderInterpolationLayer() {
+            if (!currentGridData) return;
+            if (interpolationLayer) map.removeLayer(interpolationLayer);
+
+            interpolationLayer = L.geoJSON(currentGridData, {
+                style: function (feature) {
+                    const value = feature.properties.value;
+                    const uncertainty = feature.properties.uncertainty;
+                    
+                    return {
+                        fillColor: getColorForVal(value, uncertainty),
+                        fillOpacity: getOpacityForVal(value, uncertainty),
+                        color: 'transparent',
+                        weight: 0
+                    };
+                }
+            }).addTo(map);
+
+            if (stationsLayer) stationsLayer.bringToFront();
+        }
+
+        // Map GPR predictions dynamically to dynamic color gradients
+        function getColorForVal(value, uncertainty) {
+            if (activeLayer === 'temp') {
+                if (value <= minTemp) return '#3b82f6';
+                if (value >= maxTemp) return '#ef4444';
+                
+                const ratio = (value - minTemp) / (maxTemp - minTemp);
+                if (ratio < 0.5) {
+                    return interpolateHex('#3b82f6', '#fbbf24', ratio / 0.5);
+                } else {
+                    return interpolateHex('#fbbf24', '#ef4444', (ratio - 0.5) / 0.5);
+                }
+            } else if (activeLayer === 'rain') {
+                // Precipitation colors: Light Aqua -> Vivid Blue -> Royal Purple
+                if (value <= minRain) return '#e0f2f1';
+                if (value >= maxRain) return '#6a1b9a';
+                
+                const ratio = (value - minRain) / (maxRain - minRain);
+                if (ratio < 0.5) {
+                    return interpolateHex('#e0f2f1', '#0288d1', ratio / 0.5);
+                } else {
+                    return interpolateHex('#0288d1', '#6a1b9a', (ratio - 0.5) / 0.5);
+                }
+            } else if (activeLayer === 'clouds') {
+                // Cloud Cover colors: Dark Translucent Slate -> Soft Silver White
+                if (value <= 0) return '#475569';
+                if (value >= 100) return '#f8fafc';
+                const ratio = value / 100.0;
+                return interpolateHex('#475569', '#f8fafc', ratio);
+            } else {
+                // Uncertainty Colors: Green (high confidence) -> Yellow -> Purple (low confidence)
+                if (uncertainty <= 0.0) return '#10b981';
+                if (uncertainty >= 1.2) return '#4c1d95';
+                
+                if (uncertainty < 0.6) {
+                    return interpolateHex('#10b981', '#f59e0b', uncertainty / 0.6);
+                } else {
+                    return interpolateHex('#f59e0b', '#8b5cf6', (uncertainty - 0.6) / 0.6);
+                }
+            }
+        }
+
+        function getOpacityForVal(value, uncertainty) {
+            if (activeLayer === 'temp') {
+                return 0.6;
+            } else if (activeLayer === 'rain') {
+                return 0.65;
+            } else if (activeLayer === 'clouds') {
+                // Opacity is proportional to density of cloud cover, making it look natural!
+                if (value <= 20) return 0.2;
+                if (value >= 80) return 0.75;
+                return 0.2 + ((value - 20) / 60.0) * 0.55;
+            } else {
+                if (uncertainty <= 0.0) return 0.75;
+                if (uncertainty >= 1.0) return 0.15;
+                return 0.75 - (uncertainty * 0.6);
+            }
+        }
+
+        function interpolateHex(color1, color2, factor) {
+            const r1 = parseInt(color1.substring(1, 3), 16);
+            const g1 = parseInt(color1.substring(3, 5), 16);
+            const b1 = parseInt(color1.substring(5, 7), 16);
+
+            const r2 = parseInt(color2.substring(1, 3), 16);
+            const g2 = parseInt(color2.substring(3, 5), 16);
+            const b2 = parseInt(color2.substring(5, 7), 16);
+
+            const r = Math.round(r1 + factor * (r2 - r1));
+            const g = Math.round(g1 + factor * (g2 - g1));
+            const b = Math.round(b1 + factor * (b2 - b1));
+
+            return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        }
+
+        function switchLayer(type) {
+            activeLayer = type;
+            if (type !== 'unc') {
+                currentWeatherMetric = type; // Save active weather metric so uncertainty targets it
+            }
+
+            document.getElementById("viewTemp").classList.toggle("active", type === 'temp');
+            document.getElementById("viewRain").classList.toggle("active", type === 'rain');
+            document.getElementById("viewClouds").classList.toggle("active", type === 'clouds');
+            document.getElementById("viewUnc").classList.toggle("active", type === 'unc');
+
+            const title = document.getElementById("legendTitle");
+            const bar = document.getElementById("legendBar");
+
+            if (type === 'temp') {
+                title.innerText = "Temperature Legend";
+                bar.style.background = "linear-gradient(to right, #3b82f6, #60a5fa, #fbbf24, #f97316, #ef4444)";
+            } else if (type === 'rain') {
+                title.innerText = "Precipitation Legend";
+                bar.style.background = "linear-gradient(to right, #e0f2f1, #0288d1, #6a1b9a)";
+            } else if (type === 'clouds') {
+                title.innerText = "Cloud Cover Legend";
+                bar.style.background = "linear-gradient(to right, #475569, #94a3b8, #e2e8f0, #f8fafc)";
+            } else {
+                const metricLabel = currentWeatherMetric === 'temp' ? 'Temp' : (currentWeatherMetric === 'rain' ? 'Rain' : 'Clouds');
+                title.innerText = `GPR Variance (${metricLabel})`;
+                bar.style.background = "linear-gradient(to right, #10b981, #f59e0b, #8b5cf6, #4c1d95)";
+            }
+
+            // Recalculate dynamic legend numeric bounds
+            updateLegendLabels();
+
+            // Refresh the station lists inside sidebar
+            if (cachedStationsData) {
+                renderStations(cachedStationsData);
+            }
+            
+            triggerInterpolation();
+        }
+    </script>
+</body>
+</html>
